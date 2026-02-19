@@ -452,7 +452,7 @@ with tab_overview:
     st.markdown("<br>", unsafe_allow_html=True)
     progress_fig = go.Figure(go.Bar(x=[overall_completion], y=['Progress'], orientation='h',
         marker=dict(color='#0ea5e9'), text=[f'{overall_completion:.1f}%'], textposition='inside',
-        textfont=dict(color='white', size=20, family='Arial Black')))
+        textfont=dict(color='white', size=20, family='Arial Black'), hoverinfo="none"))
     progress_fig.add_shape(type="line", x0=100, x1=100, y0=-0.5, y1=0.5, line=dict(color="#10b981", width=3, dash="dash"))
     progress_fig.add_annotation(x=100, y=0.6, text="Target: 100%", showarrow=False, font=dict(size=13, color="#94a3b8"))
     progress_fig.update_traces(cliponaxis=False)
@@ -486,7 +486,8 @@ with tab_overview:
             pct = done / total_units * 100 if total_units > 0 else 0
             tp_fig.add_trace(go.Bar(y=[name], x=[pct], orientation='h', marker=dict(color=color),
                 text=[f'{pct:.1f}%  ({int(done)} done, {int(pend)} pending)'], textposition='inside',
-                textfont=LABEL_FONT, name=name, showlegend=False))
+                textfont=LABEL_FONT, name=name, showlegend=False,
+                hovertemplate="<b>%{y}</b><br>Completion: %{x:.1f}%<extra></extra>"))
         tp_fig.add_shape(type="line", x0=100, x1=100, y0=-0.5, y1=2.5, line=dict(color="#ffffff", width=2, dash="dash"))
         tp_fig.update_traces(cliponaxis=False)
         tp_fig.update_layout(xaxis=dict(range=[0, 115], title=dict(text="Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
@@ -526,8 +527,8 @@ with tab_content:
             'Required': [total_units, total_units, total_units]})
         cd['Completion %'] = (cd['Completed'] / cd['Required'] * 100).round(1)
         fc = go.Figure()
-        fc.add_trace(go.Bar(name='Completed', x=cd['Content Type'], y=cd['Completed'], marker_color='#10b981', text=cd['Completed'], textposition='inside', textfont=LABEL_FONT))
-        fc.add_trace(go.Bar(name='Still Pending', x=cd['Content Type'], y=cd['Pending'], marker_color='#ef4444', text=cd['Pending'], textposition='inside', textfont=LABEL_FONT))
+        fc.add_trace(go.Bar(name='Completed', x=cd['Content Type'], y=cd['Completed'], marker_color='#10b981', text=cd['Completed'], textposition='inside', textfont=LABEL_FONT, hovertemplate="<b>%{x} (Completed)</b><br>Amount: %{y}<extra></extra>"))
+        fc.add_trace(go.Bar(name='Still Pending', x=cd['Content Type'], y=cd['Pending'], marker_color='#ef4444', text=cd['Pending'], textposition='inside', textfont=LABEL_FONT, hovertemplate="<b>%{x} (Pending)</b><br>Amount: %{y}<extra></extra>"))
         fc.update_traces(cliponaxis=False)
         fc.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, font=LEGEND_FONT), height=420, margin=dict(t=60, b=20, l=20, r=20),
             paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG, xaxis=dict(tickfont=dict(color='#e2e8f0', size=14)),
@@ -543,7 +544,7 @@ with tab_content:
         clrs = ['#f59e0b', '#0ea5e9', '#10b981']
         for i, row in cd.iterrows():
             rf.add_trace(go.Bar(y=[row['Content Type']], x=[row['Completion %']], orientation='h', marker=dict(color=clrs[i]),
-                text=[f"{row['Completion %']:.1f}%"], textposition='inside', textfont=LABEL_FONT, showlegend=False))
+                text=[f"{row['Completion %']:.1f}%"], textposition='inside', textfont=LABEL_FONT, showlegend=False, hovertemplate="<b>%{y}</b><br>Completion: %{x}%<extra></extra>"))
         rf.add_shape(type="line", x0=100, x1=100, y0=-0.5, y1=2.5, line=dict(color="#ffffff", width=2, dash="dash"))
         rf.add_annotation(x=100, y=2.7, text="100% Target", showarrow=False, font=dict(size=12, color="#94a3b8"))
         rf.update_traces(cliponaxis=False)
@@ -588,10 +589,10 @@ with tab_subjects:
         lc, rc = st.columns(2)
         with lc:
             st.markdown("#### Average Completion by Subject Area")
-            st.markdown("*How close each subject area is to finishing all content*")
+            st.markdown("*How close each department is to finishing all content*")
             fsg = go.Figure(go.Bar(y=sdf['Subject Area'], x=sdf['Avg Completion %'].round(1), orientation='h',
                 marker=dict(color=sdf['Avg Completion %'], colorscale=[[0,'#ef4444'],[0.5,'#f59e0b'],[1,'#10b981']], cmin=0, cmax=100, showscale=False),
-                text=sdf['Avg Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14)))
+                text=sdf['Avg Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14), hovertemplate="<b>%{y}</b><br>Avg Completion: %{x}%<extra></extra>"))
             fsg.add_vline(x=50, line_dash="dash", line_color="#f59e0b", annotation_text="50%", annotation_font=dict(color='white', size=13))
             fsg.update_traces(cliponaxis=False)
             fsg.update_layout(xaxis=dict(range=[0, 115], title=dict(text="Avg Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
@@ -603,14 +604,14 @@ with tab_subjects:
             
         with rc:
             st.markdown("#### Pending AI Videos, Podcasts & Study Guides by Subject")
-            st.markdown("*Which subject area have the heaviest remaining workload?*")
+            st.markdown("*Which departments have the heaviest remaining workload?*")
             sp = df.groupby('Subject Area').agg({'Videos Pending': 'sum', 'Podcasts Pending': 'sum', 'Guides Pending': 'sum'}).reset_index()
             sp['Total'] = sp['Videos Pending'] + sp['Podcasts Pending'] + sp['Guides Pending']
             sp = sp[sp['Subject Area'].isin(sdf['Subject Area'])].sort_values('Total', ascending=True)
             pf = go.Figure()
-            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Videos Pending'], name='AI Videos', marker_color='#f59e0b', orientation='h', text=sp['Videos Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle'))
-            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', orientation='h', text=sp['Podcasts Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle'))
-            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Guides Pending'], name='Study Guides', marker_color='#10b981', orientation='h', text=sp['Guides Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle'))
+            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Videos Pending'], name='AI Videos', marker_color='#f59e0b', orientation='h', text=sp['Videos Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>AI Videos Pending: %{x}<extra></extra>"))
+            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', orientation='h', text=sp['Podcasts Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Podcasts Pending: %{x}<extra></extra>"))
+            pf.add_trace(go.Bar(y=sp['Subject Area'], x=sp['Guides Pending'], name='Study Guides', marker_color='#10b981', orientation='h', text=sp['Guides Pending'], textposition='auto', textfont=dict(color='white', size=12), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Study Guides Pending: %{x}<extra></extra>"))
             pf.update_traces(cliponaxis=False)
             pf.update_layout(barmode='stack', xaxis=dict(title=dict(text="Pending Items", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, range=[0, sp['Total'].max() * 1.15]),
                 yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=450, margin=dict(t=10, b=20, l=10, r=20),
@@ -640,7 +641,7 @@ with tab_subjects:
             st.markdown("*Which qualification levels are furthest ahead or behind?*")
             fl = go.Figure(go.Bar(x=ldf['Course Level'], y=ldf['Avg Completion %'].round(1),
                 marker=dict(color=ldf['Avg Completion %'], colorscale=[[0,'#ef4444'],[0.5,'#f59e0b'],[1,'#10b981']], cmin=0, cmax=100, showscale=False),
-                text=ldf['Avg Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14)))
+                text=ldf['Avg Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14), hovertemplate="<b>%{x}</b><br>Avg Completion: %{y}%<extra></extra>"))
             fl.update_traces(cliponaxis=False)
             fl.update_layout(yaxis=dict(range=[0, 115], title=dict(text="Avg Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
                 xaxis=dict(title=dict(text="Course Level", font=AXIS_TITLE_FONT), tickfont=dict(color='#e2e8f0', size=13), automargin=True),
@@ -658,11 +659,11 @@ with tab_subjects:
             lp = lp.sort_values('Order')
             lp['Total'] = lp['Videos Pending'] + lp['Podcasts Pending'] + lp['Guides Pending']
             lpf = go.Figure()
-            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Videos Pending'], name='AI Videos', marker_color='#f59e0b', text=lp['Videos Pending'], textposition='outside', textfont=dict(color='white', size=13)))
-            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', text=lp['Podcasts Pending'], textposition='outside', textfont=dict(color='white', size=13)))
-            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Guides Pending'], name='Study Guides', marker_color='#10b981', text=lp['Guides Pending'], textposition='outside', textfont=dict(color='white', size=13)))
+            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Videos Pending'], name='AI Videos', marker_color='#f59e0b', text=lp['Videos Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{x}</b><br>AI Videos Pending: %{y}<extra></extra>"))
+            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', text=lp['Podcasts Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{x}</b><br>Podcasts Pending: %{y}<extra></extra>"))
+            lpf.add_trace(go.Bar(x=lp['Course Level'], y=lp['Guides Pending'], name='Study Guides', marker_color='#10b981', text=lp['Guides Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{x}</b><br>Study Guides Pending: %{y}<extra></extra>"))
             lpf.update_traces(cliponaxis=False)
-            lpf.update_layout(barmode='stack', yaxis=dict(title=dict(text="Pending Items", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
+            lpf.update_layout(barmode='stack', yaxis=dict(title=dict(text="Pending Items", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, range=[0, lp['Total'].max() * 1.15]),
                 xaxis=dict(tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=420, margin=dict(t=10, b=20, l=20, r=20),
                 paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG, legend=dict(orientation="h", yanchor="bottom", y=1.02, font=LEGEND_FONT, bgcolor=CHART_BG))
             st.plotly_chart(lpf, use_container_width=True)
@@ -698,12 +699,12 @@ with tab_quickwins:
             qd = qw.head(12).sort_values('Still Pending', ascending=True).copy()
             qd['Wrapped Name'] = qd['Course Name'].apply(lambda x: '<br>'.join(textwrap.wrap(str(x), width=35)))
             qb = go.Figure()
-            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Videos Pending'], name='AI Videos Needed', marker_color='#f59e0b', orientation='h', text=qd['Videos Pending'], textposition='inside', textfont=dict(color='white', size=13)))
-            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Podcasts Pending'], name='Podcasts Needed', marker_color='#0ea5e9', orientation='h', text=qd['Podcasts Pending'], textposition='inside', textfont=dict(color='white', size=13)))
-            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Guides Pending'], name='Study Guides Needed', marker_color='#10b981', orientation='h', text=qd['Guides Pending'], textposition='inside', textfont=dict(color='white', size=13)))
+            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Videos Pending'], name='AI Videos Needed', marker_color='#f59e0b', orientation='h', text=qd['Videos Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>AI Videos Needed: %{x}<extra></extra>"))
+            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Podcasts Pending'], name='Podcasts Needed', marker_color='#0ea5e9', orientation='h', text=qd['Podcasts Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Podcasts Needed: %{x}<extra></extra>"))
+            qb.add_trace(go.Bar(y=qd['Wrapped Name'], x=qd['Guides Pending'], name='Study Guides Needed', marker_color='#10b981', orientation='h', text=qd['Guides Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Study Guides Needed: %{x}<extra></extra>"))
             qb.update_traces(cliponaxis=False)
             qb.update_layout(barmode='stack', bargap=0.3, xaxis=dict(title=dict(text="Items Still Needed", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, range=[0, qd['Still Pending'].max() * 1.3]),
-                yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=14), automargin=True), height=max(600, len(qd)*80), margin=dict(t=10, b=20, l=300, r=60),
+                yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=max(600, len(qd)*100), margin=dict(t=10, b=20, l=10, r=50),
                 paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG, legend=dict(orientation="h", yanchor="bottom", y=1.02, font=LEGEND_FONT, bgcolor=CHART_BG))
             st.plotly_chart(qb, use_container_width=True)
             
@@ -716,11 +717,11 @@ with tab_quickwins:
             qc = qw.head(12).sort_values('Completion %', ascending=True).copy()
             qc['Wrapped Name'] = qc['Course Name'].apply(lambda x: '<br>'.join(textwrap.wrap(str(x), width=35)))
             qcf = go.Figure(go.Bar(y=qc['Wrapped Name'], x=qc['Completion %'].round(1), orientation='h', marker=dict(color='#10b981'),
-                text=qc['Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14)))
+                text=qc['Completion %'].round(1).astype(str)+'%', textposition='outside', textfont=dict(color='white', size=14), hovertemplate="<b>%{y}</b><br>Completion: %{x}%<extra></extra>"))
             qcf.add_vline(x=100, line_dash="dash", line_color="#ffffff", annotation_text="100%", annotation_font=dict(color='white', size=13))
             qcf.update_traces(cliponaxis=False)
             qcf.update_layout(bargap=0.3, xaxis=dict(range=[0, 125], title=dict(text="Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
-                yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=14), automargin=True), height=max(600, len(qc)*80), margin=dict(t=10, b=20, l=300, r=60),
+                yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=max(600, len(qc)*100), margin=dict(t=10, b=20, l=10, r=40),
                 paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG)
             st.plotly_chart(qcf, use_container_width=True)
             
@@ -763,12 +764,12 @@ with tab_priority:
                 pd2 = top_10_pc.sort_values('Still Pending', ascending=True).copy()
                 pd2['Wrapped Name'] = pd2['Course Name'].apply(lambda x: '<br>'.join(textwrap.wrap(str(x), width=35)))
                 pb = go.Figure()
-                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Videos Pending'], name='AI Videos', marker_color='#f59e0b', orientation='h', text=pd2['Videos Pending'], textposition='inside', textfont=dict(color='white', size=13)))
-                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', orientation='h', text=pd2['Podcasts Pending'], textposition='inside', textfont=dict(color='white', size=13)))
-                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Guides Pending'], name='Study Guides', marker_color='#10b981', orientation='h', text=pd2['Guides Pending'], textposition='inside', textfont=dict(color='white', size=13)))
+                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Videos Pending'], name='AI Videos', marker_color='#f59e0b', orientation='h', text=pd2['Videos Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>AI Videos Needed: %{x}<extra></extra>"))
+                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Podcasts Pending'], name='Podcasts', marker_color='#0ea5e9', orientation='h', text=pd2['Podcasts Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Podcasts Needed: %{x}<extra></extra>"))
+                pb.add_trace(go.Bar(y=pd2['Wrapped Name'], x=pd2['Guides Pending'], name='Study Guides', marker_color='#10b981', orientation='h', text=pd2['Guides Pending'], textposition='auto', textfont=dict(color='white', size=13), insidetextanchor='middle', hovertemplate="<b>%{y}</b><br>Study Guides Needed: %{x}<extra></extra>"))
                 pb.update_traces(cliponaxis=False)
                 pb.update_layout(barmode='stack', bargap=0.3, xaxis=dict(title=dict(text="Items Needed", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, range=[0, pd2['Still Pending'].max() * 1.3]),
-                    yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=14), automargin=True), height=max(600, len(pd2)*80), margin=dict(t=10, b=20, l=350, r=60),
+                    yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=max(600, len(pd2)*100), margin=dict(t=10, b=20, l=10, r=60),
                     paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG, legend=dict(orientation="h", yanchor="bottom", y=1.02, font=LEGEND_FONT, bgcolor=CHART_BG))
                 st.plotly_chart(pb, use_container_width=True)
                 
@@ -781,11 +782,11 @@ with tab_priority:
                 pc2 = top_10_pc.sort_values('Completion %', ascending=True).copy()
                 pc2['Wrapped Name'] = pc2['Course Name'].apply(lambda x: '<br>'.join(textwrap.wrap(str(x), width=35)))
                 pcf = go.Figure(go.Bar(y=pc2['Wrapped Name'], x=pc2['Completion %'].round(1), orientation='h', marker=dict(color='#ef4444'),
-                    text=pc2.apply(lambda r: f"{r['Completion %']:.0f}% ({int(r['Number of Units'])} units)", axis=1), textposition='outside', textfont=dict(color='white', size=13)))
+                    text=pc2.apply(lambda r: f"{r['Completion %']:.0f}% ({int(r['Number of Units'])} units)", axis=1), textposition='outside', textfont=dict(color='white', size=13), hovertemplate="<b>%{y}</b><br>Completion: %{x}%<extra></extra>"))
                 pcf.add_vline(x=50, line_dash="dash", line_color="#f59e0b", annotation_text="50%", annotation_font=dict(color='white', size=13))
                 pcf.update_traces(cliponaxis=False)
-                pcf.update_layout(bargap=0.3, xaxis=dict(range=[0, 125], title=dict(text="Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
-                    yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=14), automargin=True), height=max(600, len(pc2)*80), margin=dict(t=10, b=20, l=350, r=120),
+                pcf.update_layout(bargap=0.3, xaxis=dict(range=[0, 115], title=dict(text="Completion %", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
+                    yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=max(600, len(pc2)*100), margin=dict(t=10, b=20, l=10, r=120),
                     paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG)
                 st.plotly_chart(pcf, use_container_width=True)
                 
@@ -817,7 +818,7 @@ with tab_priority:
                 st.markdown("*Which departments have the most courses waiting?*")
                 nbs = ns.groupby('Subject Area').agg(Courses=('Course Name', 'count'), Needed=('Total Required', 'sum')).sort_values('Needed', ascending=True).reset_index()
                 nsf = go.Figure(go.Bar(y=nbs['Subject Area'], x=nbs['Needed'], orientation='h', marker=dict(color='#ef4444'),
-                    text=nbs.apply(lambda r: f"{int(r['Needed'])} items ({int(r['Courses'])} courses)", axis=1), textposition='outside', textfont=dict(color='white', size=13)))
+                    text=nbs.apply(lambda r: f"{int(r['Needed'])} items ({int(r['Courses'])} courses)", axis=1), textposition='outside', textfont=dict(color='white', size=13), hovertemplate="<b>%{y}</b><br>Needed: %{x} items<extra></extra>"))
                 nsf.update_traces(cliponaxis=False)
                 nsf.update_layout(xaxis=dict(title=dict(text="Items Needed", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, range=[0, nbs['Needed'].max()*1.5]),
                     yaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=12), automargin=True), height=450, margin=dict(t=10, b=20, l=10, r=160), paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG)
@@ -834,8 +835,8 @@ with tab_priority:
                 nbz['Order'] = nbz['Course Size'].apply(lambda x: sol.index(x) if x in sol else 99)
                 nbz = nbz.sort_values('Order')
                 nzf = go.Figure()
-                nzf.add_trace(go.Bar(x=nbz['Course Size'], y=nbz['Courses'], name='Courses', marker_color='#ef4444', text=nbz['Courses'], textposition='outside', textfont=dict(color='white', size=15)))
-                nzf.add_trace(go.Bar(x=nbz['Course Size'], y=nbz['Needed'], name='Content Needed', marker_color='#f59e0b', text=nbz['Needed'], textposition='outside', textfont=dict(color='white', size=15), yaxis='y2'))
+                nzf.add_trace(go.Bar(x=nbz['Course Size'], y=nbz['Courses'], name='Courses', marker_color='#ef4444', text=nbz['Courses'], textposition='outside', textfont=dict(color='white', size=15), hovertemplate="<b>%{x}</b><br>Courses: %{y}<extra></extra>"))
+                nzf.add_trace(go.Bar(x=nbz['Course Size'], y=nbz['Needed'], name='Content Needed', marker_color='#f59e0b', text=nbz['Needed'], textposition='outside', textfont=dict(color='white', size=15), yaxis='y2', hovertemplate="<b>%{x}</b><br>Content Needed: %{y}<extra></extra>"))
                 nzf.update_layout(yaxis=dict(title=dict(text="Courses", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR),
                     yaxis2=dict(title=dict(text="Content Needed", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, overlaying='y', side='right'),
                     xaxis=dict(tickfont=dict(color='#e2e8f0', size=12)), barmode='group', height=450, margin=dict(t=10, b=20, l=20, r=60),
