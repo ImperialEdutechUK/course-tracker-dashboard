@@ -394,7 +394,7 @@ with st.expander("📖 How to Read This Dashboard"):
     - **Early Stage:** 1-49%  |  **In Progress:** 50-74%  |  **Almost Done:** 75-99%  |  **Complete:** 100%
     """)
 
-sharepoint_url = "https://globaledulinkuk-my.sharepoint.com/:x:/g/personal/malinda_imperiallearning_co_uk/IQBJWtESoY7aS4mrdvmQQ6SUAdELVAXa5QmZs2O_W7U1qmo?download=1"
+sharepoint_url = "https://globaledulinkuk-my.sharepoint.com/:x:/g/personal/sadeev_imperiallearning_co_uk/IQCgqczvPccERK5x-3fcBFPdAUsHzB0rMIahy7kRMz39xtU?download=1"
 df = load_data(sharepoint_url)
 if df is None:
     st.warning("⚠️ Automatic Update Failed. Company security may be blocking the direct link.")
