@@ -393,6 +393,9 @@ def load_chapter_video_data(file_bytes):
             date_val = pd.to_datetime(date_val, errors='coerce')
             if pd.isna(date_val):
                 continue
+            # Fix dates with wrong year (2025 instead of 2026)
+            if date_val.year == 2025:
+                date_val = date_val.replace(year=2026)
             week_label = row['Week'] if pd.notna(row.get('Week')) else ''
             for i, person in enumerate(persons):
                 col_idx = i + 2
@@ -415,7 +418,7 @@ def load_chapter_video_data(file_bytes):
                     'Person': person,
                     'Videos': videos,
                     'Note': note,
-                    'Day': date_val.strftime('%a'),
+                    'Day': date_val.day_name()[:3],
                     'Date Label': date_val.strftime('%d %b %Y'),
                 })
 
@@ -423,6 +426,7 @@ def load_chapter_video_data(file_bytes):
             return pd.DataFrame()
 
         vdf = pd.DataFrame(records)
+        vdf['Day'] = vdf['Date'].dt.day_name().str[:3]
         vdf['Met Target'] = vdf['Videos'] >= DAILY_TARGET
         vdf['Shortfall'] = np.where(vdf['Videos'] < DAILY_TARGET, DAILY_TARGET - vdf['Videos'], 0)
         vdf['Surplus'] = np.where(vdf['Videos'] >= DAILY_TARGET, vdf['Videos'] - DAILY_TARGET, 0)
