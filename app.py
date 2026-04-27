@@ -320,13 +320,15 @@ def clean_and_preprocess(df):
     df['Course Name'] = df['Course Name'].str.replace(r'^\n+', '', regex=True)
     df['Course Name'] = df['Course Name'].str.replace(r'\n+', ' ', regex=True)
     df['Course Name'] = df['Course Name'].str.replace(r'\s+', ' ', regex=True)
-    numeric_cols = ['Number of Units', 'Number of AI Videos', 'Number of Podcasts', 'Number of Study Guides']
+    numeric_cols = ['Number of Units', 'Number of AI Videos', 'Number of Podcasts', 'Number of Study Guides', 'Number of H5P Quizzes']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     df = df[df['Number of Units'].notna() & (df['Number of Units'] > 0)].copy()
     for col in ['Number of AI Videos', 'Number of Podcasts', 'Number of Study Guides']:
         df[col] = df[col].fillna(0).astype(int)
+    if 'Number of H5P Quizzes' in df.columns:
+        df['Number of H5P Quizzes'] = df['Number of H5P Quizzes'].fillna(0).astype(int)
     df['Number of Units'] = df['Number of Units'].astype(int)
     return df
 
@@ -484,6 +486,116 @@ def load_webtool_status_data(file_bytes):
         return None
 
 
+# ── Load Course Page Uploading Status sheet ──
+def load_course_page_data(file_bytes):
+    """Parse the 'Course Page Uploading Status' sheet — daily counts of courses uploaded
+    to the course page. Handles both wide (dates as columns, the expected layout) and
+    long (dates as rows) formats so it adapts dynamically as new daily columns are added.
+
+    Returns a long-format DataFrame with columns: Date, Count, Day, Date Label, Short Date.
+    """
+    try:
+        if isinstance(file_bytes, bytes):
+            file_content = BytesIO(file_bytes)
+        else:
+            file_content = file_bytes
+
+        xls = pd.ExcelFile(file_content, engine='openpyxl')
+        sheet_name = None
+        for s in xls.sheet_names:
+            sl = s.lower()
+            if 'course' in sl and 'page' in sl and ('upload' in sl or 'uploading' in sl):
+                sheet_name = s
+                break
+        if sheet_name is None:
+            return None
+
+        raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+        if raw.empty:
+            return None
+
+        long_df = None
+
+        # ── Strategy A: long format — find a column whose values are dates ──
+        for header_row in [0, 1, 2]:
+            try:
+                df = pd.read_excel(xls, sheet_name=sheet_name, header=header_row)
+                if df.empty:
+                    continue
+                df.columns = df.columns.astype(str).str.strip()
+                date_col = None
+                for c in df.columns:
+                    parsed = pd.to_datetime(df[c], errors='coerce')
+                    if parsed.notna().sum() >= 2:
+                        date_col = c
+                        df['_Date'] = parsed
+                        break
+                if date_col is None:
+                    continue
+                df = df[df['_Date'].notna()].copy()
+                if df.empty:
+                    continue
+                count_col = None
+                for c in df.columns:
+                    if c in (date_col, '_Date'):
+                        continue
+                    vals = pd.to_numeric(df[c], errors='coerce')
+                    if vals.notna().sum() >= 1:
+                        count_col = c
+                        df['_Count'] = vals.fillna(0)
+                        break
+                if count_col is None:
+                    continue
+                long_df = df[['_Date', '_Count']].rename(columns={'_Date': 'Date', '_Count': 'Count'}).copy()
+                break
+            except Exception:
+                continue
+
+        # ── Strategy B: wide format — dates spread across columns, counts in a row below ──
+        if long_df is None or long_df.empty:
+            for header_row in range(min(5, len(raw))):
+                try:
+                    headers = raw.iloc[header_row]
+                    dates = pd.to_datetime(headers, errors='coerce')
+                    if dates.notna().sum() < 2:
+                        continue
+                    for value_row in range(header_row + 1, min(header_row + 8, len(raw))):
+                        row_vals = pd.to_numeric(raw.iloc[value_row], errors='coerce')
+                        if row_vals.notna().sum() < 1:
+                            continue
+                        pairs = []
+                        for j in range(len(dates)):
+                            d = dates.iloc[j] if j < len(dates) else pd.NaT
+                            v = row_vals.iloc[j] if j < len(row_vals) else np.nan
+                            if pd.notna(d) and pd.notna(v):
+                                pairs.append((d, float(v)))
+                        if pairs:
+                            long_df = pd.DataFrame(pairs, columns=['Date', 'Count'])
+                            break
+                    if long_df is not None and not long_df.empty:
+                        break
+                except Exception:
+                    continue
+
+        if long_df is None or long_df.empty:
+            return None
+
+        long_df = long_df.dropna(subset=['Date']).copy()
+        long_df['Count'] = pd.to_numeric(long_df['Count'], errors='coerce').fillna(0).astype(int)
+        long_df = long_df[long_df['Count'] >= 0]
+        long_df = long_df.groupby('Date', as_index=False)['Count'].sum()
+        long_df = long_df.sort_values('Date').reset_index(drop=True)
+
+        long_df['Day'] = long_df['Date'].dt.day_name().str[:3]
+        long_df['Date Label'] = long_df['Date'].dt.strftime('%d %b %Y')
+        long_df['Short Date'] = long_df['Date'].dt.strftime('%d %b') + ' (' + long_df['Day'] + ')'
+
+        return long_df
+    except Exception as e:
+        st.error(f"Error loading Course Page Uploading data: {str(e)}")
+        return None
+
+
 def engineer_features(df):
     df['Videos Completed'] = df['Number of AI Videos']
     df['Podcasts Completed'] = df['Number of Podcasts']
@@ -565,11 +677,13 @@ df = None
 nb_log = None
 wt_log = None
 wt_status_df = None
+course_page_df = None
 
 if file_bytes is not None:
     df = load_data(file_bytes)
     nb_log, wt_log = load_video_log_data(file_bytes)
     wt_status_df = load_webtool_status_data(file_bytes)
+    course_page_df = load_course_page_data(file_bytes)
 
 if df is None:
     st.warning("⚠️ Automatic Update Failed. Company security may be blocking the direct link.")
@@ -580,6 +694,7 @@ if df is None:
         df = load_data(upload_bytes)
         nb_log, wt_log = load_video_log_data(upload_bytes)
         wt_status_df = load_webtool_status_data(upload_bytes)
+        course_page_df = load_course_page_data(upload_bytes)
     else:
         st.stop()
 
@@ -602,6 +717,7 @@ guides_pending = total_units - total_guides_done
 video_pct = (total_videos_done / total_units * 100) if total_units > 0 else 0
 podcast_pct = (total_podcasts_done / total_units * 100) if total_units > 0 else 0
 guide_pct = (total_guides_done / total_units * 100) if total_units > 0 else 0
+total_h5p_done = int(df['Number of H5P Quizzes'].sum()) if 'Number of H5P Quizzes' in df.columns else 0
 
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
@@ -623,13 +739,14 @@ with tab_overview:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### Key Metrics")
     st.markdown("<br>", unsafe_allow_html=True)
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
     with k1: st.metric("Overall Completion", f"{overall_completion:.1f}%")
     with k2: st.metric("AI Videos Completed", f"{int(total_videos_done)}/{int(total_units)}")
     with k3: st.metric("Podcasts Completed", f"{int(total_podcasts_done)}/{int(total_units)}")
     with k4: st.metric("Study Guides Completed", f"{int(total_guides_done)}/{int(total_units)}")
-    with k5: st.metric("Courses Fully Done", f"{complete_courses}")
-    with k6: st.metric("Courses Not Started", f"{not_started_courses}")
+    with k5: st.metric("H5P Quizzes Completed", f"{total_h5p_done}/{int(total_units)}")
+    with k6: st.metric("Courses Fully Done", f"{complete_courses}")
+    with k7: st.metric("Courses Not Started", f"{not_started_courses}")
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1171,23 +1288,26 @@ with tab_videolog:
     # ── If SharePoint load didn't get the log, allow upload ──
     _nb = nb_log
     _wt = wt_status_df
-    if (_nb is None or (isinstance(_nb, pd.DataFrame) and _nb.empty)) and (_wt is None or (isinstance(_wt, pd.DataFrame) and _wt.empty)):
+    _cp = course_page_df
+    if (_nb is None or (isinstance(_nb, pd.DataFrame) and _nb.empty)) and (_wt is None or (isinstance(_wt, pd.DataFrame) and _wt.empty)) and (_cp is None or (isinstance(_cp, pd.DataFrame) and _cp.empty)):
         st.info("👇 Upload the tracker file to view the Chapter-wise AI Video Log data.")
         log_upload = st.file_uploader("Upload 'Additional Material Tracker Sheet.xlsx' (for Video Log tab)", type=['xlsx'], key='log_upload')
         if log_upload is not None:
             upload_log_bytes = log_upload.read()
             _nb, _ = load_video_log_data(upload_log_bytes)
             _wt = load_webtool_status_data(upload_log_bytes)
+            _cp = load_course_page_data(upload_log_bytes)
 
     has_nb = _nb is not None and isinstance(_nb, pd.DataFrame) and not _nb.empty
     has_wt = _wt is not None and isinstance(_wt, pd.DataFrame) and not _wt.empty
+    has_cp = _cp is not None and isinstance(_cp, pd.DataFrame) and not _cp.empty
 
-    if not has_nb and not has_wt:
+    if not has_nb and not has_wt and not has_cp:
         st.markdown('<div class="warning-card"><strong>⚠️ No Chapter-wise AI Video Log Data Available</strong><br><br>'
                     'The "Chapter-wise AI video log" sheet could not be found or is empty. Please upload the tracker file above.</div>', unsafe_allow_html=True)
     else:
         # ── Sub-tabs ──
-        sub_nb, sub_wt = st.tabs(["🔬 Using NotebookLM", "🌐 Using WebTool"])
+        sub_nb, sub_wt, sub_cp = st.tabs(["🔬 Using NotebookLM", "🌐 Using WebTool", "📤 Course Page Uploading"])
 
         # ─────────────────────────────────────────────────────
         #  SUB-TAB A: NotebookLM
@@ -1596,6 +1716,168 @@ with tab_videolog:
                 display_wt_cols = ['Date Label', 'Day'] + wt_persons + ['Team Total']
                 st.dataframe(wt_pivot[display_wt_cols].rename(columns={'Date Label': 'Date', 'Day': 'Weekday'}),
                     hide_index=True, use_container_width=True)
+
+
+        # ─────────────────────────────────────────────────────
+        #  SUB-TAB C: Course Page Uploading
+        # ─────────────────────────────────────────────────────
+        with sub_cp:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if not has_cp:
+                st.info("No Course Page Uploading data available yet. Daily upload counts will appear here once data is entered in the 'Course Page Uploading Status' sheet.")
+            else:
+                cp_df = _cp.sort_values('Date').reset_index(drop=True)
+                cp_total = int(cp_df['Count'].sum())
+                cp_num_days = int(cp_df['Date'].nunique())
+                cp_avg = (cp_total / cp_num_days) if cp_num_days > 0 else 0
+                cp_best = cp_df.loc[cp_df['Count'].idxmax()] if not cp_df.empty else None
+                cp_date_order = cp_df['Short Date'].tolist()
+                cp_color = '#0ea5e9'
+                cp_accent = '#10b981'
+
+                # ── KPI cards ──
+                st.markdown("### Key Metrics")
+                st.markdown("<br>", unsafe_allow_html=True)
+                k1, k2, k3 = st.columns(3)
+                with k1:
+                    st.markdown(
+                        f'<div style="background:rgba(30,41,59,0.7);border-radius:10px;padding:18px 20px;'
+                        f'border:1px solid rgba(255,255,255,0.1);border-left:4px solid {cp_color};'
+                        f'box-shadow:0 4px 15px rgba(0,0,0,0.2);">'
+                        f'<div style="color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">Total Courses Uploaded</div>'
+                        f'<div style="color:{cp_color};font-size:32px;font-weight:700;margin-top:4px;">{cp_total}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                with k2:
+                    st.markdown(
+                        f'<div style="background:rgba(30,41,59,0.7);border-radius:10px;padding:18px 20px;'
+                        f'border:1px solid rgba(255,255,255,0.1);border-left:4px solid {cp_accent};'
+                        f'box-shadow:0 4px 15px rgba(0,0,0,0.2);">'
+                        f'<div style="color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">Days Tracked</div>'
+                        f'<div style="color:{cp_accent};font-size:32px;font-weight:700;margin-top:4px;">{cp_num_days}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                with k3:
+                    st.markdown(
+                        f'<div style="background:rgba(30,41,59,0.7);border-radius:10px;padding:18px 20px;'
+                        f'border:1px solid rgba(255,255,255,0.1);border-left:4px solid #f59e0b;'
+                        f'box-shadow:0 4px 15px rgba(0,0,0,0.2);">'
+                        f'<div style="color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">Average per Day</div>'
+                        f'<div style="color:#f59e0b;font-size:32px;font-weight:700;margin-top:4px;">{cp_avg:.1f}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Line graph: Daily uploads time series ──
+                st.markdown("### 📈 Daily Course Page Uploads — Time Series")
+                st.markdown("*Daily upload counts plotted over time*")
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                cp_line = go.Figure()
+                cp_line.add_trace(go.Scatter(
+                    x=cp_df['Short Date'], y=cp_df['Count'],
+                    mode='lines+markers',
+                    line=dict(color=cp_color, width=3),
+                    marker=dict(size=10, color=cp_color, line=dict(width=2, color='white')),
+                    name='Daily Uploads',
+                    hovertemplate="<b>%{x}</b><br>Uploaded: %{y}<extra></extra>"
+                ))
+                cp_line.update_layout(
+                    xaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=11), categoryorder='array', categoryarray=cp_date_order, tickangle=-30),
+                    yaxis=dict(title=dict(text="Courses Uploaded", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, rangemode='tozero'),
+                    height=400, margin=dict(t=20, b=80, l=60, r=30),
+                    paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG,
+                    showlegend=False
+                )
+                st.plotly_chart(cp_line, use_container_width=True, config=PLOTLY_CONFIG)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Cumulative line + Bar (side by side) ──
+                lc, rc = st.columns(2)
+                with lc:
+                    st.markdown("#### Cumulative Uploads Over Time")
+                    st.markdown("*Running total of courses uploaded so far*")
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    cp_cum = cp_df.copy()
+                    cp_cum['Cumulative'] = cp_cum['Count'].cumsum()
+                    cp_cum_fig = go.Figure()
+                    cp_cum_fig.add_trace(go.Scatter(
+                        x=cp_cum['Short Date'], y=cp_cum['Cumulative'],
+                        mode='lines+markers',
+                        line=dict(color=cp_accent, width=3),
+                        marker=dict(size=9, color=cp_accent, line=dict(width=2, color='white')),
+                        fill='tozeroy', fillcolor='rgba(16,185,129,0.15)',
+                        hovertemplate="<b>%{x}</b><br>Cumulative: %{y}<extra></extra>"
+                    ))
+                    cp_cum_fig.update_layout(
+                        xaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=11), categoryorder='array', categoryarray=cp_date_order, tickangle=-30),
+                        yaxis=dict(title=dict(text="Cumulative Courses", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR, rangemode='tozero'),
+                        height=380, margin=dict(t=20, b=70, l=50, r=20),
+                        paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG, showlegend=False
+                    )
+                    st.plotly_chart(cp_cum_fig, use_container_width=True, config=PLOTLY_CONFIG)
+
+                with rc:
+                    st.markdown("#### Daily Uploads — Bar View")
+                    st.markdown("*Same daily counts as bars for quick comparison*")
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    cp_bar = go.Figure()
+                    cp_bar.add_trace(go.Bar(
+                        x=cp_df['Short Date'], y=cp_df['Count'],
+                        marker_color=cp_color,
+                        text=cp_df['Count'].apply(lambda v: str(int(v)) if v > 0 else ''),
+                        textposition='outside',
+                        textfont=dict(color='#e2e8f0', size=12, family='Arial Black'),
+                        hovertemplate="<b>%{x}</b><br>Uploaded: %{y}<extra></extra>",
+                        showlegend=False
+                    ))
+                    cp_bar.update_traces(cliponaxis=False)
+                    cp_max = int(cp_df['Count'].max()) if not cp_df.empty else 1
+                    cp_bar.update_layout(
+                        xaxis=dict(title="", tickfont=dict(color='#e2e8f0', size=11), categoryorder='array', categoryarray=cp_date_order, tickangle=-30),
+                        yaxis=dict(title=dict(text="Courses Uploaded", font=AXIS_TITLE_FONT), tickfont=AXIS_TICK_FONT, gridcolor=GRID_COLOR,
+                                   rangemode='tozero', range=[0, cp_max * 1.25 if cp_max > 0 else 1]),
+                        height=380, margin=dict(t=20, b=70, l=50, r=20),
+                        paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG
+                    )
+                    st.plotly_chart(cp_bar, use_container_width=True, config=PLOTLY_CONFIG)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Summary ──
+                st.markdown("### 📋 Summary")
+                st.markdown("<br>", unsafe_allow_html=True)
+                if cp_best is not None and cp_num_days > 0:
+                    summary_html = (
+                        f'<div class="insight-card"><strong>📤 Course Page Uploading Summary</strong><br><br>'
+                        f'Across <strong>{cp_num_days} tracked day{"s" if cp_num_days != 1 else ""}</strong>, a total of '
+                        f'<strong>{cp_total} course{"s" if cp_total != 1 else ""}</strong> have been uploaded to the course page, '
+                        f'averaging <strong>{cp_avg:.1f} per day</strong>.<br><br>'
+                        f'The strongest day so far was <strong>{cp_best["Short Date"]}</strong> with '
+                        f'<strong>{int(cp_best["Count"])} course{"s" if int(cp_best["Count"]) != 1 else ""}</strong> uploaded.'
+                        f'</div>'
+                    )
+                    st.markdown(summary_html, unsafe_allow_html=True)
+
+                # ── Full data table ──
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 📋 Full Daily Log — Course Page Uploading")
+                st.markdown("<br>", unsafe_allow_html=True)
+                cp_table = cp_df[['Date Label', 'Day', 'Count']].rename(columns={
+                    'Date Label': 'Date', 'Day': 'Weekday', 'Count': 'Courses Uploaded'
+                })
+                st.dataframe(cp_table, hide_index=True, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
